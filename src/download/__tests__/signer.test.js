@@ -32,6 +32,12 @@ describe('certDigests', () => {
     expect(certDigests(out)).toEqual([GOOD, OTHER]);
   });
 
+  test('leaves out the source stamp: that certificate is the store\'s, not the developer\'s', () => {
+    const out = `Source Stamp Signer certificate DN: CN=Store\nSource Stamp Signer certificate SHA-256 digest: ${OTHER}\n${printCerts(GOOD)}`;
+    expect(certDigests(out)).toEqual([GOOD]);
+    expect(certDigests(`Source Stamp Signer certificate SHA-256 digest: ${OTHER}\r\n`)).toEqual([]);
+  });
+
   test('ignores anything that is not a full SHA-256', () => {
     expect(certDigests('Signer #1 certificate SHA-256 digest: abc123')).toEqual([]);
     expect(certDigests(`Signer #1 certificate SHA-256 digest: ${'ab:'.repeat(21)}a`)).toEqual([]);

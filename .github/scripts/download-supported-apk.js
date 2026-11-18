@@ -29,7 +29,8 @@ const {
 } = require('./apk-selection');
 const { validateApkBoundary, validateArchiveSafe } = require('../../src/apk/validate-boundary');
 const { validateDownloadedApkAbi } = require('./apk-abi-validator');
-const { checkSigner, UnsignedApkError } = require('../../src/download/signer');
+const { readSigners, learnableOrigin } = require('../../src/download/signer');
+const signerPin = require('./signer-pin');
 const { apkeditorMergeArgs } = require('../../src/download/merge-args');
 const minSdkLib = require('../../src/download/min-sdk');
 
@@ -274,6 +275,25 @@ ensureDir(APKS_DIR);
 let downloadSuccess = false;
 // Where the original came from: cache (apps/), preloaded (tools/apks/) or download.
 let source = '';
+// The source this run's download (or check-versions' pre-download) came from,
+// if the app's signer may be learned from it (signer.js learnableOrigin); else why not.
+let learnOrigin = null;
+let noLearnReason = 'the original was not downloaded in this run';
+
+/**
+ * The learnable source of a file pre_download_apks.sh fetched, from the
+ * download-origin.json it wrote beside it, or null. The record must name this
+ * very file and version.
+ */
+function preloadedOrigin(file) {
+  try {
+    const rec = JSON.parse(fs.readFileSync(path.join(TOOLS_DIR, 'apks', APP_ID, 'download-origin.json'), 'utf8'));
+    if (!rec || rec.version !== TARGET_VERSION || rec.file !== path.basename(file)) return null;
+    return learnableOrigin(rec);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Return true if `filePath` is OK to use as-is (either no preferred
@@ -333,6 +353,7 @@ if (cached) {
     console.log(`Using cached APK: ${cached} (v${TARGET_VERSION})`);
     downloadSuccess = true;
     source = 'cache';
+    noLearnReason = 'the original came from the build cache, not a fresh download';
   } else {
     console.log(`Discarding bad cached APK (missing ${loadPreferredArch() || 'preferred-arch'} libs, or built for too old an Android) — will re-download.`);
   }
@@ -374,6 +395,8 @@ if (!downloadSuccess) {
       // empty." (see exp-3 report on run 31908351240).
       downloadSuccess = true;
       source = 'preloaded';
+      learnOrigin = preloadedOrigin(preloaded);
+      noLearnReason = 'it was pre-downloaded from a source that is not trusted to learn from (only APKMirror or APKPure), or its source was not recorded';
     } else {
       // Preloaded file exists but is missing the preferred arch's libs, or is
       // built for an older Android than the patches support.
@@ -394,6 +417,11 @@ if (!downloadSuccess) {
       console.log(`unified-downloader succeeded: ${JSON.stringify(dl.result)}`);
       downloadSuccess = true;
       source = 'download';
+      learnOrigin = learnableOrigin(dl.result);
+      const from = dl.result.origin || dl.result.source;
+      noLearnReason = from === 'direct-url'
+        ? 'it came from a cached or listed download URL that is not a plain HTTPS URL on an APKMirror or APKPure host'
+        : `it came from ${from}, and only an APKMirror or APKPure download is trusted`;
     } else {
       console.log(`unified-downloader failed: ${dl.error}`);
       lastDownloaderError = dl.error;
@@ -403,6 +431,7 @@ if (!downloadSuccess) {
         if (manualFile && cachedFileMeetsMinSdk(manualFile)) {
           downloadSuccess = true;
           source = 'download';
+          noLearnReason = 'it came from the manual URL fallback';
         } else if (manualFile) {
           try { fs.unlinkSync(manualFile); } catch { /* ignore */ }
           if (lastMinSdkRejection) {
@@ -495,17 +524,21 @@ if (
 //     builder's own merge of a bundle from an earlier build: then the
 //     bundle it came from is checked and merged again. Only an unsigned
 //     file gets that second chance; a wrong signer always fails.
+//     An app apk-signers.json doesn't list is checked against the signer
+//     recorded in its newest release (signer-pin.js), or, when there is
+//     none, learned from this download if it came from APKMirror or APKPure. The
+//     record to publish is left in $RUNNER_TEMP for patch_apk.sh.
 try {
-  try {
-    checkSigner(apkCandidate, APP_ID);
-  } catch (error) {
-    const bundle = findBundleInDir(APKS_DIR);
-    if (!(error instanceof UnsignedApkError) || path.basename(apkCandidate) !== `${APP_ID}.apk` || !bundle) throw error;
-    console.log(`${path.basename(apkCandidate)} is an earlier merge (unsigned); checking the bundle and merging it again.`);
-    checkSigner(bundle, APP_ID);
+  let config = {};
+  try { config = JSON.parse(fs.readFileSync(process.env.CONFIG_FILE || path.join(process.cwd(), 'config.json'), 'utf8')); } catch { /* checkOriginal says what is missing */ }
+  const checked = signerPin.checkOriginal({
+    appId: APP_ID, file: apkCandidate, version: TARGET_VERSION, signers: readSigners(), config,
+    learnOrigin, noLearnReason, recordDir: RUNNER_TEMP, findBundle: () => findBundleInDir(APKS_DIR),
+  });
+  if (checked.file !== apkCandidate) {
     // Patch only what was checked: drop the cached merge and merge the bundle again below.
     fs.unlinkSync(apkCandidate);
-    apkCandidate = bundle;
+    apkCandidate = checked.file;
   }
 } catch (error) {
   console.error(`::error::Signature check failed: ${error.message}`);

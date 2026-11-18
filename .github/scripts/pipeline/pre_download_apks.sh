@@ -19,6 +19,8 @@ _default_repo_versions='{}'
 REPO_VERSIONS="${REPO_VERSIONS:-$_default_repo_versions}"
 SKIP_LIST="${SKIP_LIST:-[]}"
 PRE_DOWNLOAD_TIMEOUT_SECONDS="${PRE_DOWNLOAD_TIMEOUT_SECONDS:-480}"
+# Per-package record of where a pre-downloaded file came from (see download_for).
+ORIGIN_RECORD=download-origin.json
 
 mkdir -p "$APK_DIR" "$RESULTS_DIR"
 
@@ -109,6 +111,10 @@ download_for() {
     rm -rf -- "${APK_DIR:?}"/*
   fi
   if printf '%s' "$result" | jq -e '.success' >/dev/null 2>&1; then
+    # Where the file came from, so the build job can learn the app's signer
+    # from it (download-supported-apk.js preloadedOrigin). No patch code runs
+    # in this job. Without it, the build job just learns nothing.
+    printf '%s' "$result" | jq -c --arg version "$version"       '{source, origin, url, file: ([(.path // .file) | strings | split("/") | last][0]), version: $version}'       > "$APK_DIR/$ORIGIN_RECORD" 2>/dev/null || rm -f "$APK_DIR/$ORIGIN_RECORD"
     local url
     url="$(printf '%s' "$result" | jq -r '.url // empty')"
     if [ -n "$url" ] && [ "$url" != "null" ]; then

@@ -199,7 +199,9 @@ describe('pipeline integration regressions', () => {
     command('aapt', scenario === 'unreadable' ? 'exit 1' : `printf '%s\\n' "${badging}"`);
     command('aapt2', scenario === 'unreadable' ? 'exit 1' : `printf '%s\\n' "${badging}"`);
     const configFile = path.join(dir, 'config.json');
-    fs.writeFileSync(configFile, JSON.stringify({ preferred_arch: '' }));
+    // Not listed in apk-signers.json: its releases are asked for a recorded signer (none).
+    command('gh', 'exit 0');
+    fs.writeFileSync(configFile, JSON.stringify({ preferred_arch: '', patch_repos: { 'com.expected': { name: 'expected' } } }));
     const output = path.join(dir, 'output');
     fs.writeFileSync(output, '');
     const result = spawnSync(process.execPath, [path.join(root, '.github/scripts/download-supported-apk.js')], {
@@ -254,6 +256,55 @@ describe('pipeline integration regressions', () => {
     });
     expect(result.status).toBe(0);
     expect(JSON.parse(fs.readFileSync(path.join(apks, 'build-inputs.json'), 'utf8'))).not.toHaveProperty('commit');
+  });
+
+  describe('the learned signer in build-inputs.json', () => {
+    const PIN = { sha256: ['a'.repeat(64)], learnedFrom: 'apkmirror-api', learnedVersion: '24.3' };
+    const apkName = 'dev-app-v24.3-v3-dev.1';
+
+    function publish(signerFile) {
+      const apks = path.join(dir, 'apks');
+      fs.mkdirSync(apks);
+      fs.writeFileSync(path.join(apks, `${apkName}.apk`), 'signed fixture');
+      if (signerFile !== undefined) fs.writeFileSync(path.join(apks, `${apkName}.signer.json`), signerFile);
+      const configFile = path.join(dir, 'config.json');
+      fs.writeFileSync(configFile, JSON.stringify(config));
+      command('gh', 'exit 0');
+      const result = spawnSync('bash', [path.join(root, '.github/scripts/pipeline/create_release.sh')], {
+        encoding: 'utf8', env: environment({ CONFIG_FILE: configFile, APKS_DIR: apks,
+          CLI_VERSION: 'v1', CLI_BRANCH: 'main', REPO_VERSIONS: JSON.stringify(versions), GITHUB_SHA: '' }),
+      });
+      const file = path.join(apks, 'build-inputs.json');
+      return { result, inputs: fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null };
+    }
+
+    test('a signer record is published as `signer`, and nothing else about the release changes', () => {
+      const { result, inputs } = publish(`${JSON.stringify({ ...PIN, extra: 'dropped' })}\n`);
+      expect(result.status).toBe(0);
+      expect(inputs.signer).toEqual(PIN);
+      expect(Object.keys(inputs).sort()).toEqual(['cliVersion', 'fingerprint', 'releaseTag', 'signer']);
+    });
+
+    test('no record leaves the field out', () => {
+      const { result, inputs } = publish(undefined);
+      expect(result.status).toBe(0);
+      expect(inputs).not.toHaveProperty('signer');
+    });
+
+    test.each([
+      ['not JSON', '{ nope'],
+      ['not an object', '[1]'],
+      ['a short fingerprint', JSON.stringify({ ...PIN, sha256: ['abc'] })],
+      ['an upper-case fingerprint', JSON.stringify({ ...PIN, sha256: ['A'.repeat(64)] })],
+      ['no fingerprints', JSON.stringify({ ...PIN, sha256: [] })],
+      ['no source', JSON.stringify({ sha256: PIN.sha256, learnedVersion: '1' })],
+      ['no version', JSON.stringify({ sha256: PIN.sha256, learnedFrom: 'apkmirror' })],
+    ])('a record that is %s stops that release instead of dropping the pin', (_, text) => {
+      const { result, inputs } = publish(text);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toMatch(/signer record for dev-app .* is not a valid pin/);
+      expect(inputs).toBeNull();
+    });
   });
 });
 

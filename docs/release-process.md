@@ -77,7 +77,10 @@ If a release is marked as a prerelease, enable "Include prereleases" in Obtainiu
 Scheduled builds skip an app only when the expected tag contains its APK,
 `SHA256SUMS`, and `build-inputs.json`, and the release notes contain a matching
 build-input fingerprint. `build-inputs.json` records that fingerprint, the CLI
-version and the commit built from (`commit`, missing on older releases). The
+version, the commit built from (`commit`, missing on older releases) and, for an app
+that `apk-signers.json` doesn't list, the signer its original APK is checked against
+(`signer`: `sha256`, `learnedFrom`, `learnedVersion`; see `docs/troubleshooting.md` →
+"Signature check failed"). The signer is not part of the fingerprint. The
 tag doesn't reliably point at that commit: a rebuild keeps the existing tag,
 and a new tag is made at the default branch's head. The fingerprint includes the app configuration, patch
 Boolean selections, preferred architecture, CLI configuration/version, dependency lockfile,

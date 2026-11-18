@@ -368,14 +368,29 @@ not receive them.
 Before patching, the original APK's signing certificate is compared with the
 SHA-256 fingerprints listed for the app in `.github/scripts/apk-signers.json`
 (`src/download/signer.js`). In a bundle, every APK is checked (the base and every
-split), before the merge; the message names the one that failed. Apps that aren't
-listed are skipped with a notice.
+split), before the merge; the message names the one that failed. An app that isn't
+listed is checked against the signer recorded in the `signer` field of the
+`build-inputs.json` of its newest release, which the first APKMirror or APKPure
+download of the app records, in the build job or in check-versions' pre-download
+(`apkmirror-api`, `apkmirror`, `apkeep`, `apkpure-exact`, or a cached or listed HTTPS URL
+on `www.apkmirror.com`, `apkmirror.com`, `d.apkpure.com` or `download.pureapk.com`; a
+download from Google Play, the APK cache, any other URL or the manual URL records
+nothing). Without a
+recorded signer, or one to learn, it is skipped with a notice that says why.
 
 - **`is signed by <digest>, not by <app>'s developer`:** the source served an APK
   signed by someone else, which usually means a modified APK. Don't patch it: delete
   the app's APK cache and let another source supply it. If the developer really did
   add a new key (check the "APK certificate fingerprints" on APKMirror), add the new
   fingerprint to the app's `sha256` list.
+- **`not by the signer first recorded for <app> (...)`:** the same for an app whose
+  signer was learned. The message prints the signers found, the recorded ones, the
+  version and source they were learned from, and an entry to paste into
+  `.github/scripts/apk-signers.json` if the developer really changed their key (a
+  listed entry replaces the recorded signer).
+- **`could not read the signer recorded for <app>`:** GitHub could not be asked, or the
+  release's `build-inputs.json` is not valid. The build stops instead of treating the
+  app as unpinned; re-run the failed job.
 - **`apksigner could not verify`:** the APK has no valid signature. A cached
   `<appId>.apk` left by an earlier merge is expected to be unsigned; when its bundle
   is still in the cache, that bundle is checked and merged again instead. Any other

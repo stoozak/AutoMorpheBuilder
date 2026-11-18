@@ -90,6 +90,24 @@ for app_name in "${APPS[@]}"; do
   [ -n "$digest" ] || { log_error "No fingerprint for $app_name"; exit 1; }
   RELEASE_NOTES+=$'\n'"<!-- build-input:${digest} -->"
 
+  # The signer to pin for this app (download-supported-apk.js, via patch_apk.sh),
+  # if apk-signers.json doesn't list it. A record that is not a well-formed pin
+  # stops this app's release rather than being dropped: the pin would be lost.
+  # Checked before anything is published, so a bad one leaves no release behind.
+  signer_json=null
+  signer_file="${first_apk%.apk}.signer.json"
+  if [ -s "$signer_file" ]; then
+    signer_json="$(jq -ce 'select(type == "object"
+        and (.sha256 | type == "array" and length > 0 and all(.[]; type == "string" and test("^[0-9a-f]{64}$")))
+        and (.learnedFrom | type == "string" and length > 0)
+        and (.learnedVersion | type == "string" and length > 0))
+      | {sha256, learnedFrom, learnedVersion}' "$signer_file")" || signer_json=""
+    if [ -z "$signer_json" ]; then
+      log_error "The signer record for $app_name ($signer_file) is not a valid pin."
+      exit 1
+    fi
+  fi
+
   if gh release view "$TAG" >/dev/null 2>&1; then
     log "Release $TAG exists; replacing assets."
     gh release edit "$TAG" --notes "Build replacement in progress; provenance will be restored after all uploads succeed."
@@ -161,9 +179,10 @@ for app_name in "${APPS[@]}"; do
   provenance="$APKS_DIR/build-inputs.json"
   # The commit built from. The tag doesn't reliably point at it: a rebuild
   # keeps the existing tag, and a new tag is made at the default branch's head.
-  jq -n --arg fingerprint "$digest" --arg cli "$CLI_VERSION" --arg tag "$TAG" --arg commit "${GITHUB_SHA:-}" \
+  jq -n --arg fingerprint "$digest" --arg cli "$CLI_VERSION" --arg tag "$TAG" --arg commit "${GITHUB_SHA:-}" --argjson signer "$signer_json" \
     '{fingerprint: $fingerprint, cliVersion: $cli, releaseTag: $tag}
-     + (if $commit == "" then {} else {commit: $commit} end)' > "$provenance"
+     + (if $commit == "" then {} else {commit: $commit} end)
+     + (if $signer == null then {} else {signer: $signer} end)' > "$provenance"
   with_retry 5 3 gh release upload "$TAG" "$provenance" --clobber
   gh release edit "$TAG" --title "$TITLE" --notes "$RELEASE_NOTES"
   log "::notice::Published release: ${TAG}"

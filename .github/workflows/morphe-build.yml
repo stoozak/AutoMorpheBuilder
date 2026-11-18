@@ -254,6 +254,7 @@ jobs:
             tools/apks/**/*.xapk
             tools/apks/**/*.apkm
             tools/apks/**/*.apks
+            tools/apks/**/download-origin.json
           retention-days: 1
           if-no-files-found: ignore
 
@@ -545,6 +546,7 @@ jobs:
           path: |
             out/${{ steps.retry.outputs.output || steps.patch.outputs.output }}
             out/*.package
+            out/*.signer.json
           retention-days: 3
           compression-level: 0
 

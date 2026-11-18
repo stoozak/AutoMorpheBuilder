@@ -68,21 +68,19 @@ function lastBuilt(release) {
 }
 
 /**
- * Pure: select which tags to delete for one app.
+ * Pure: the releases that belong to one app (tag `<name>-v...`), the one
+ * built last first. signer-pin.js reads the newest of them.
  *
  * releases   array of { tagName, publishedAt, assets?: [{ name, updatedAt }] }
  * appName    the app's short name from config.json patch_repos[*].name
- * keepCount  number of newest releases to retain
- *
- * Returns array of tagName strings to delete, oldest-first. Empty when
- * matching releases <= keepCount.
  */
-function selectTagsToDelete(releases, appName, keepCount) {
+function appReleases(releases, appName) {
   // Escape regex metacharacters so a future app name containing `.`,
   // `+`, etc. is matched literally and doesn't widen the prefix.
   const escaped = String(appName).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const prefix = new RegExp(`^${escaped}-v`);
-  const matches = releases
+  // `-v` then a digit, as create_release.sh groups tags: `x` must not match `x-vanced-v1...`.
+  const prefix = new RegExp(`^${escaped}-v\\d`);
+  return releases
     .filter((r) => typeof r.tagName === 'string' && prefix.test(r.tagName))
     // RFC3339 lexicographic sort = chronological sort. Falls back to
     // tagName descending so two releases built in the same second
@@ -94,6 +92,20 @@ function selectTagsToDelete(releases, appName, keepCount) {
       if (ta !== tb) return tb.localeCompare(ta); // newest first
       return b.tagName.localeCompare(a.tagName);
     });
+}
+
+/**
+ * Pure: select which tags to delete for one app.
+ *
+ * releases   array of { tagName, publishedAt, assets?: [{ name, updatedAt }] }
+ * appName    the app's short name from config.json patch_repos[*].name
+ * keepCount  number of newest releases to retain
+ *
+ * Returns array of tagName strings to delete, oldest-first. Empty when
+ * matching releases <= keepCount.
+ */
+function selectTagsToDelete(releases, appName, keepCount) {
+  const matches = appReleases(releases, appName);
   if (matches.length <= keepCount) return [];
   // Keep matches[0..keepCount-1]; delete the rest. Reverse so the
   // caller deletes oldest-first (matches[keepCount] is the next-oldest).
@@ -105,12 +117,12 @@ function selectTagsToDelete(releases, appName, keepCount) {
  * upload times (`gh release list` has no file times). One line of JSON per
  * release, every page.
  */
-function listReleases() {
-  const out = execFileSync(
+function listReleases(run = execFileSync, options = {}) {
+  const out = run(
     'gh',
     ['api', '--paginate', 'repos/{owner}/{repo}/releases?per_page=100', '--jq',
       '.[] | {tagName: .tag_name, publishedAt: .published_at, assets: [.assets[]? | {name, updatedAt: .updated_at}]} | tojson'],
-    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
+    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, ...options },
   );
   try {
     return out.split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line));
@@ -193,4 +205,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { lastBuilt, selectTagsToDelete, listReleases, deleteRelease, main };
+module.exports = { lastBuilt, appReleases, selectTagsToDelete, listReleases, deleteRelease, main };

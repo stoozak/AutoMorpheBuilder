@@ -1724,7 +1724,9 @@ async function download(packageId, version, outputDir, opts = {}) {
       if (result && acceptMinSdk(result, resolved.source, { url: resolved.url })) {
         // Save to URL cache
         remember(resolved.url, resolved.source);
-        return result;
+        // downloadWithUrl labels every file 'direct-url'; `origin` keeps the
+        // source that resolved this URL in this run (signer.js learnableOrigin).
+        return { ...result, origin: resolved.source };
       }
     } else {
       console.error(`[download] ${resolved.source} gave a URL that was already rejected; not downloading it again`);
@@ -1736,7 +1738,7 @@ async function download(packageId, version, outputDir, opts = {}) {
       const other = await tryOtherApkpureVariants(packageId, version, outputDir, [...rejectedUrls], opts, acceptMinSdk, remainingMs());
       if (other) {
         remember(other.url, 'apkeep');
-        return other.result;
+        return { ...other.result, origin: 'apkeep' };
       }
     }
   } catch (e) {

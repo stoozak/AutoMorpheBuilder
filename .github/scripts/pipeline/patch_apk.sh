@@ -185,4 +185,11 @@ if command -v aapt >/dev/null 2>&1; then
     | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -n1 > "$PKG_FILE" || true
   if [ -s "$PKG_FILE" ]; then log "Patched APK installs as $(cat "$PKG_FILE")"; else rm -f "$PKG_FILE"; fi
 fi
+# The signer record left by download-supported-apk.js (an app that apk-signers.json
+# doesn't list); create_release.sh puts it in the release's build-inputs.json.
+SIGNER_FILE="$OUT_DIR/${OUTPUT_NAME%.apk}.signer.json"
+rm -f "$SIGNER_FILE"
+if [ -s "$RUNNER_TEMP/signer-${APP_ID}.json" ]; then
+  cp "$RUNNER_TEMP/signer-${APP_ID}.json" "$SIGNER_FILE"
+fi
 log "Patched (unsigned) APK ready: $OUT_DIR/$OUTPUT_NAME"

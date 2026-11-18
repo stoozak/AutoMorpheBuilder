@@ -1,5 +1,5 @@
 {
-  "_comment": "SHA-256 of each developer's APK signing certificate, from APKMirror's 'APK certificate fingerprints' on the release named in 'seen'. src/download/signer.js checks every original APK against this before patching; apps not listed aren't checked. If a developer adds a new key, add its fingerprint to the list.",
+  "_comment": "SHA-256 of each developer's APK signing certificate, from APKMirror's 'APK certificate fingerprints' on the release named in 'seen'. src/download/signer.js checks every original APK against this before patching. A listed app always uses this list. An app not listed is checked against the signer recorded in its newest release (learned from its first APKMirror or APKPure download); an app with neither isn't checked. If a developer adds a new key, add its fingerprint to the list: a listed entry replaces the recorded signer.",
   "com.google.android.youtube": {
     "sha256": ["3d7a1223019aa39d9ea0e3436ab7c0896bfb4fb679f4de5fe7c23f326c8f994a"],
     "subject": "CN=Unknown, OU=\"Google, Inc\", O=\"Google, Inc\", L=Mountain View, ST=CA, C=US",

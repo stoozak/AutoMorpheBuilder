@@ -88,6 +88,26 @@ CI/security-only workflows, tests, documentation helpers, and unrelated tool pin
 are excluded. The epoch remains a manual escape hatch for inputs not covered here.
 Older releases without provenance are rebuilt once.
 
+### Optional: let logistics-only changes wait (`LAZY_LOGISTICS_REBUILD`)
+
+Each release also records a second, output-only fingerprint
+(`<!-- build-output:... -->`). It leaves out `LOGISTICS_FILES` in
+`build-fingerprint.js`: code that decides when, whether and how a build is
+published (pruning, preflight, the compat probe, browser installers, cache
+cleanup), but cannot change the APK or what the download is checked against.
+It also hashes the build workflow without comment and blank lines, step names,
+`timeout-minutes` or the commit SHAs of pinned actions.
+
+Set the repository variable `LAZY_LOGISTICS_REBUILD` to `on` to accept a
+release whose output fingerprint still matches. A change to logistics files
+alone then waits for each app's next rebuild (new app version, new patches or
+a forced build) instead of rebuilding every app. Any file not listed in
+`LOGISTICS_FILES`, including a new one, still rebuilds at once. Unset (the
+default), only the full fingerprint is checked, as before. Releases made before
+this marker existed still match the full fingerprint, so they rebuild only at
+the next change of any builder file. Turning the variable off again rebuilds
+every release that was kept only by its output fingerprint.
+
 `workflow_dispatch` sets `FORCE_BUILD=true` and bypasses this comparison only when its `force` box is ticked (it is unticked by default, so a manual run skips current releases like a scheduled one). Its `apps` box limits the run to the named apps, which build even if current.
 
 After a successful publish, `create-release` deletes the run's artifacts; the APKs live on the releases. After a failed publish they stay for **Re-run failed jobs**.

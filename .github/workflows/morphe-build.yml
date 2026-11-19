@@ -172,6 +172,9 @@ jobs:
           CLI_VERSION: ${{ steps.check.outputs.cli-version }}
           FORCE_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.force }}
           ONLY_APPS: ${{ github.event_name == 'workflow_dispatch' && inputs.apps || '' }}
+          # Opt-in repository variable: 'on' lets logistics-only changes wait for
+          # each app's next rebuild (see build-fingerprint.js LOGISTICS_FILES).
+          LAZY_LOGISTICS_REBUILD: ${{ vars.LAZY_LOGISTICS_REBUILD == 'on' }}
         run: bash .github/scripts/pipeline/check_existing_releases.sh
 
       - name: Cache Playwright browsers

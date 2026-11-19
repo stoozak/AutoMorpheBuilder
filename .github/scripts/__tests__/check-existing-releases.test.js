@@ -325,6 +325,29 @@ describe('FORCE_BUILD branch', () => {
     }
   });
 
+  test.each([['on', true], ['off', false]])('LAZY_LOGISTICS_REBUILD %s decides whether entries carry an output fingerprint', (_, lazy) => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'check-existing-releases-'));
+    const tmpFile = path.join(tmpDir, 'github-output.txt');
+    const cfgFile = path.join(tmpDir, 'config.json');
+    fs.writeFileSync(cfgFile, JSON.stringify({
+      patch_repos: { 'com.reddit.frontpage': { name: 'reddit', repo: 'MorpheApp/morphe-patches', branch: 'main' } },
+    }));
+    fs.writeFileSync(tmpFile, '');
+    try {
+      withEnv({
+        REPO_VERSIONS: '{"MorpheApp/morphe-patches":"v1.39.1"}', GITHUB_OUTPUT: tmpFile, CONFIG_FILE: cfgFile,
+        TOOLS_DIR: '/nonexistent', FORCE_BUILD: 'true', LAZY_LOGISTICS_REBUILD: String(lazy),
+      }, () => loadFresh().main());
+      const line = fs.readFileSync(tmpFile, 'utf8').split('\n').find((l) => l.startsWith('matrix-include='));
+      const [entry] = JSON.parse(line.replace(/^matrix-include=/, ''));
+      if (lazy) expect(entry.outputFingerprint).toMatch(/^[0-9a-f]{64}$/);
+      else expect(entry).not.toHaveProperty('outputFingerprint');
+      if (lazy) expect(entry.outputFingerprint).not.toBe(entry.buildFingerprint);
+    } finally {
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+    }
+  });
+
   test('main() without FORCE_BUILD falls through to the decide() path', () => {
     // TOOLS_DIR points at /nonexistent so resolveApkVersion returns ''
     // and the fail-open path emits should-build=true. This proves the

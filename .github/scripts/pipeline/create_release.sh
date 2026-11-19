@@ -48,6 +48,9 @@ PATCHES_SUMMARY="$(
 )"
 
 FINGERPRINTS="$(node "$(dirname "$0")/../build-fingerprint.js")"
+# Recorded on every release, so turning LAZY_LOGISTICS_REBUILD on later
+# needs no rebuild to start matching.
+OUTPUT_FINGERPRINTS="$(FINGERPRINT_TIER=output node "$(dirname "$0")/../build-fingerprint.js")"
 
 # --- publish each app's release -------------------------------------------
 
@@ -89,6 +92,9 @@ for app_name in "${APPS[@]}"; do
   digest="$(jq -r --arg name "$app_name" '.[$name] // empty' <<<"$FINGERPRINTS")"
   [ -n "$digest" ] || { log_error "No fingerprint for $app_name"; exit 1; }
   RELEASE_NOTES+=$'\n'"<!-- build-input:${digest} -->"
+  output_digest="$(jq -r --arg name "$app_name" '.[$name] // empty' <<<"$OUTPUT_FINGERPRINTS")"
+  [ -n "$output_digest" ] || { log_error "No output fingerprint for $app_name"; exit 1; }
+  RELEASE_NOTES+=$'\n'"<!-- build-output:${output_digest} -->"
 
   if gh release view "$TAG" >/dev/null 2>&1; then
     log "Release $TAG exists; replacing assets."

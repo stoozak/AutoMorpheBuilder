@@ -238,6 +238,7 @@ describe('pipeline integration regressions', () => {
     expect(uploads.every((args) => args[2] === 'dev-app-v24.3-v3-dev.1' && args.includes('--clobber'))).toBe(true);
     expect(commands.at(-1)[1]).toBe('edit');
     expect(commands.at(-1).at(-1)).toContain('<!-- build-input:');
+    expect(commands.at(-1).at(-1)).toContain('<!-- build-output:');
     expect(fs.readFileSync(path.join(apks, 'SHA256SUMS'), 'utf8')).toContain(filename);
   });
 

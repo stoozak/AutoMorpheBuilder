@@ -145,7 +145,7 @@ function checkReleaseExists(tag, entry) {
   try {
     const release = JSON.parse(execFileSync('gh', ['release', 'view', tag, '--json', 'body,assets'],
       { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'] }));
-    return releaseIsCurrent(release, tag, entry.buildFingerprint);
+    return releaseIsCurrent(release, tag, entry.buildFingerprint, entry.outputFingerprint);
   } catch { return false; }
 }
 
@@ -168,13 +168,17 @@ function main() {
   const repoVersions = JSON.parse(REPO_VERSIONS);
   const patches = JSON.parse(fs.readFileSync(process.env.PATCHES_FILE || 'patches.json', 'utf8'));
   const pipeline = pipelineDigest();
+  // Opt-in: with LAZY_LOGISTICS_REBUILD, a release whose output inputs still
+  // match is kept, so a logistics-only change waits for the app's next rebuild.
+  const lazy = isTruthyEnv('LAZY_LOGISTICS_REBUILD');
+  const outputPipeline = lazy ? pipelineDigest(undefined, { outputOnly: true }) : '';
   const jarPath = path.join(TOOLS_DIR, 'morphe-desktop.jar');
   const resolvedVersions = fs.existsSync(path.join(TOOLS_DIR, 'supported-versions.json'))
     ? JSON.parse(fs.readFileSync(path.join(TOOLS_DIR, 'supported-versions.json'), 'utf8')) : {};
   // Every app in this run uses the same release of each extra patch source.
   const extraTags = resolveExtraTags(config);
   let matrix = buildMatrix(config, repoVersions).map((entry) => ({
-    ...entry, extraTags: extraTags[entry.appId] || {}, buildFingerprint: appFingerprint(config, patches, entry.appId, process.env.CLI_VERSION || '', pipeline), targetVersion: config.patch_repos[entry.appId].pin_version || resolvedVersions[entry.appId]?.[0] || '',
+    ...entry, extraTags: extraTags[entry.appId] || {}, buildFingerprint: appFingerprint(config, patches, entry.appId, process.env.CLI_VERSION || '', pipeline), ...(lazy ? { outputFingerprint: appFingerprint(config, patches, entry.appId, process.env.CLI_VERSION || '', outputPipeline) } : {}), targetVersion: config.patch_repos[entry.appId].pin_version || resolvedVersions[entry.appId]?.[0] || '',
   }));
 
   // Apps the compat probe dropped can't build on this CLI, forced or not.

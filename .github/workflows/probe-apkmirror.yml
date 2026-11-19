@@ -1,0 +1,41 @@
+name: Probe APKMirror (throwaway test, do not merge)
+
+on:
+  push:
+    branches: [test/patchright-probe]
+    paths: ['.github/scripts/probe-apkmirror.js', '.github/workflows/probe-apkmirror.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [playwright/ours, patchright/ours, patchright/recommended]
+        run: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: 22
+      - name: Install browser library
+        run: |
+          set -euo pipefail
+          engine="${MATRIX_VARIANT%%/*}"
+          if [ "$engine" = playwright ]; then npm install --no-save playwright@1.65.1; npx playwright install --with-deps chromium
+          else npm install --no-save patchright@1.64.3; npx patchright install --with-deps chromium; fi
+        env:
+          MATRIX_VARIANT: ${{ matrix.variant }}
+      - name: Probe
+        run: |
+          engine="${MATRIX_VARIANT%%/*}"; mode="${MATRIX_VARIANT##*/}"
+          if [ "$mode" = recommended ]; then xvfb-run -a node .github/scripts/probe-apkmirror.js "$engine" "$mode"
+          else node .github/scripts/probe-apkmirror.js "$engine" "$mode"; fi
+        env:
+          MATRIX_VARIANT: ${{ matrix.variant }}
